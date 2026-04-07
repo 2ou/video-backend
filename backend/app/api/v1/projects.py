@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-
 from app.core.database import get_db
 from app.deps.auth import get_current_user
 from app.models.user import User
 from app.schemas.common import BaseResponse
 from app.schemas.project import ProjectCreateRequest, ProjectData, ProjectUpdateRequest
 from app.services.project_service import ProjectService
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 

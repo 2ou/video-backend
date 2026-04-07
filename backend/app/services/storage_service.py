@@ -4,9 +4,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 import requests
-from fastapi import UploadFile
-
 from app.core.config import settings
+from fastapi import UploadFile
 
 
 class BaseStorageService(ABC):

@@ -1,7 +1,6 @@
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.models.project import Project
+from sqlalchemy.orm import Session
 
 
 class ProjectService:

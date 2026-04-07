@@ -1,11 +1,10 @@
-from fastapi import Depends
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session
-
 from app.core.database import get_db
 from app.core.exceptions import UnauthorizedError
 from app.core.security import decode_access_token
 from app.models.user import User
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 bearer_scheme = HTTPBearer(auto_error=False)
 

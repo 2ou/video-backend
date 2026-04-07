@@ -1,5 +1,5 @@
-import { defineStore } from 'pinia'
-import { getRunApi, getRunNodesApi, runProjectApi } from '../api/projects'
+import {defineStore} from 'pinia'
+import {getRunApi, getRunNodesApi, runProjectApi} from '../api/projects'
 
 export const useRunStore = defineStore('run', {
   state: () => ({ run: null as any, nodes: [] as any[] }),

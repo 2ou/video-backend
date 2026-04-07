@@ -1,8 +1,7 @@
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import UnauthorizedError
 from app.core.security import create_access_token, verify_password
 from app.models.user import User
+from sqlalchemy.orm import Session
 
 
 class AuthService:

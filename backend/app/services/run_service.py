@@ -1,8 +1,7 @@
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError
 from app.models.workflow_run import WorkflowRun
 from app.models.workflow_run_node import WorkflowRunNode
+from sqlalchemy.orm import Session
 
 
 class RunService:

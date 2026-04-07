@@ -1,9 +1,8 @@
 from datetime import datetime
 
+from app.core.database import Base
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from app.core.database import Base
 
 
 class WorkflowRunNode(Base):

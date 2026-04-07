@@ -1,9 +1,8 @@
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.utils.default_canvas import DEFAULT_CANVAS_JSON
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 
 class CanvasService:

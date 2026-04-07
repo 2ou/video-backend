@@ -1,13 +1,12 @@
 from datetime import datetime
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import ValidationError
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.models.workflow_run import WorkflowRun
 from app.models.workflow_run_node import WorkflowRunNode
 from app.workers.run_tasks import execute_run
+from sqlalchemy.orm import Session
 
 SUPPORTED_NODE_TYPES = {"input_video", "prompt_input", "kie_video_task", "output_video"}
 

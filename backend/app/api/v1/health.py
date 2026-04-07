@@ -1,9 +1,8 @@
-from fastapi import APIRouter
-from sqlalchemy import text
-
 from app.core.database import SessionLocal
 from app.core.redis import ping_redis
 from app.schemas.common import BaseResponse, HealthData
+from fastapi import APIRouter
+from sqlalchemy import text
 
 router = APIRouter(tags=["health"])
 
