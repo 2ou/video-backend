@@ -21,16 +21,6 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { VueFlow } from '@vue-flow/core'
-import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
-import NodePalette from '../components/canvas/NodePalette.vue'
-import NodePropsPanel from '../components/panels/NodePropsPanel.vue'
-import { useCanvasStore } from '../stores/canvas'
-import { useRunStore } from '../stores/run'
-import { uploadAssetApi } from '../api/assets'
 
 const route = useRoute()
 const router = useRouter()
