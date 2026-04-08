@@ -46,28 +46,57 @@ public class RunWorker {
             Map<String,Object> canvas = objectMapper.readValue(version.getCanvasJson(), new TypeReference<>(){});
             String prompt = "";
             Object assetId = null;
-            for (Map<String,Object> n : (List<Map<String,Object>>) canvas.getOrDefault("nodes", List.of())) {
-                if ("prompt_input".equals(n.get("type"))) prompt = String.valueOf(((Map<?,?>)n.get("data")).getOrDefault("text", ""));
-                if ("input_video".equals(n.get("type"))) assetId = ((Map<?,?>)n.get("data")).get("asset_id");
+
+            // 安全地提取并遍历 nodes
+            List<Map<String,Object>> canvasNodes = (List<Map<String,Object>>) canvas.get("nodes");
+            if (canvasNodes != null) {
+                for (Map<String,Object> n : canvasNodes) {
+                    if ("prompt_input".equals(n.get("type"))) {
+                        Map<String, Object> data = (Map<String, Object>) n.get("data");
+                        if (data != null) prompt = String.valueOf(data.getOrDefault("text", ""));
+                    }
+                    if ("input_video".equals(n.get("type"))) {
+                        Map<String, Object> data = (Map<String, Object>) n.get("data");
+                        if (data != null) assetId = data.get("asset_id");
+                    }
+                }
             }
+
             for (WorkflowRunNode node : nodes) {
-                if (!"kie_video_task".equals(node.getNodeType())) { node.setStatus("success"); nodeRepository.save(node); continue; }
+                if (!"kie_video_task".equals(node.getNodeType())) {
+                    node.setStatus("success");
+                    nodeRepository.save(node);
+                    continue;
+                }
+
                 Map<String,Object> in = objectMapper.readValue(node.getInputJson(), new TypeReference<>(){});
+
+                // 提取 params
+                Map<String, Object> params = (Map<String, Object>) in.get("params");
+                if (params == null) params = new HashMap<>();
+
+                // 组装 payload
                 Map<String,Object> payload = new HashMap<>();
-                payload.put("model", ((Map<?,?>)in.getOrDefault("params", Map.of())).getOrDefault("model", "video-model-a"));
-                payload.put("params", in.getOrDefault("params", Map.of()));
+                payload.put("model", params.getOrDefault("model", "video-model-a"));
+                payload.put("params", params);
                 payload.put("prompt", prompt);
                 payload.put("input_asset_id", assetId);
-                Map<String,Object> payload = Map.of("model", ((Map<?,?>)in.getOrDefault("params", Map.of())).getOrDefault("model", "video-model-a"), "params", in.getOrDefault("params", Map.of()), "prompt", prompt, "input_asset_id", assetId);
+
                 String taskId = kieService.submitVideoTask(payload);
-                node.setProvider("kie"); node.setProviderTaskId(taskId); node.setStatus("running"); node.setStartedAt(LocalDateTime.now());
+                node.setProvider("kie");
+                node.setProviderTaskId(taskId);
+                node.setStatus("running");
+                node.setStartedAt(LocalDateTime.now());
                 nodeRepository.save(node);
+
                 pollingWorker.schedule(node.getId());
             }
             run.setStatus("running");
             runRepository.save(run);
         } catch (Exception e){
-            run.setStatus("failed"); run.setErrorMessage(e.getMessage()); runRepository.save(run);
+            run.setStatus("failed");
+            run.setErrorMessage(e.getMessage());
+            runRepository.save(run);
         }
     }
 }

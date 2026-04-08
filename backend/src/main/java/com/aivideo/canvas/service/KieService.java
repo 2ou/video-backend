@@ -25,7 +25,17 @@ public class KieService {
         try {
             ResponseEntity<Map> resp = restTemplate.exchange(kieProperties.getBaseUrl()+"/v1/video/tasks", HttpMethod.POST, new HttpEntity<>(payload, headers()), Map.class);
             Map<?,?> body = resp.getBody();
-            Object id = body == null ? null : (body.get("task_id") != null ? body.get("task_id") : ((Map<?,?>)body.getOrDefault("data", Map.of())).get("task_id"));
+
+            Object id = null;
+            if (body != null) {
+                // 优先从外层提取 task_id
+                id = body.get("task_id");
+                // 如果外层没有，尝试从嵌套的 data 字典中提取
+                if (id == null && body.get("data") instanceof Map<?, ?> dataMap) {
+                    id = dataMap.get("task_id");
+                }
+            }
+
             if (id == null) throw new AppException("KIE_BAD_RESPONSE","KIE submit response missing task_id");
             return String.valueOf(id);
         } catch (Exception e){
@@ -36,7 +46,6 @@ public class KieService {
 
     public Map<String,Object> queryTask(String providerTaskId){
         try {
-            ResponseEntity<Map> resp = restTemplate.exchange(kieProperties.getBaseUrl()+"/v1/video/tasks/"+providerTaskId, HttpMethod.GET, new HttpEntity<>(null, headers()), Map.class);
             ResponseEntity<Map> resp = restTemplate.exchange(kieProperties.getBaseUrl()+"/v1/video/tasks/"+providerTaskId, HttpMethod.GET, new HttpEntity<>(headers()), Map.class);
             return resp.getBody();
         } catch (Exception e){

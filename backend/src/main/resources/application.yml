@@ -1,30 +1,75 @@
 spring:
   application:
     name: ${APP_NAME:ai-video-canvas-backend}
+
+  # --- 数据库与连接池配置优化 ---
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DB:ai_video_canvas}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DB:ai_video_canvas}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&useSSL=false
     username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD:123456}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 增加 HikariCP 连接池优化参数
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 20000
+
+  # --- JPA & Hibernate 配置优化 ---
   jpa:
+    open-in-view: false # 强烈建议关闭，避免 OSIV 带来的性能隐患和连接池耗尽问题
     hibernate:
-      ddl-auto: update
+      # 允许通过环境变量覆盖，生产环境切忌使用 update，建议使用 validate 或 none
+      ddl-auto: ${HIBERNATE_DDL_AUTO:update}
     properties:
       hibernate:
         format_sql: true
+        show_sql: ${SHOW_SQL:false} # 控制是否在控制台打印 SQL
+
+  # --- Jackson JSON 序列化优化 ---
   jackson:
     property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null # 过滤掉值为 null 的字段，减小网络传输体积
+    time-zone: GMT+8                     # 明确设定时区为东八区
+    date-format: yyyy-MM-dd HH:mm:ss     # 统一全局的日期时间格式
+
+  # --- Redis 连接池配置优化 ---
   data:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
       database: ${REDIS_DB:0}
+      timeout: 5000ms # 设置连接超时时间
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+# --- Web 服务器优化 ---
 server:
   port: ${APP_PORT:8000}
+  tomcat:
+    threads:
+      max: 200 # Tomcat 最大工作线程数（默认 200，可按需调优）
+    connection-timeout: 20000ms
+
+# --- 自定义业务配置 ---
 app:
   jwt-secret: ${JWT_SECRET:replace_me}
   jwt-expire-minutes: ${JWT_EXPIRE_MINUTES:10080}
   public-base-url: ${PUBLIC_BASE_URL:http://127.0.0.1:8000}
   upload-dir: ${UPLOAD_DIR:./uploads}
+
+# --- 第三方 API 配置 ---
 kie:
   base-url: ${KIE_BASE_URL:https://api.kie.ai}
   api-key: ${KIE_API_KEY:replace_me}
+
+# --- 日志配置（新增） ---
+logging:
+  level:
+    root: INFO
+    # 将你自己的包名替换到这里，开发环境下方便查看业务逻辑的 DEBUG 日志
+    com.aivideo.canvas: ${APP_LOG_LEVEL:DEBUG}
