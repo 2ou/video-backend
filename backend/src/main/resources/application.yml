@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: ${APP_NAME:ai-video-canvas-backend}
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DB:ai_video_canvas}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:123456}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DB:0}
+server:
+  port: ${APP_PORT:8000}
+app:
+  jwt-secret: ${JWT_SECRET:replace_me}
+  jwt-expire-minutes: ${JWT_EXPIRE_MINUTES:10080}
+  public-base-url: ${PUBLIC_BASE_URL:http://127.0.0.1:8000}
+  upload-dir: ${UPLOAD_DIR:./uploads}
+kie:
+  base-url: ${KIE_BASE_URL:https://api.kie.ai}
+  api-key: ${KIE_API_KEY:replace_me}
