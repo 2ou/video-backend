@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { createProjectApi, listProjectsApi } from '../api/projects'
 
+
 export const useProjectStore = defineStore('project', {
   state: () => ({ projects: [] as any[] }),
   actions: {

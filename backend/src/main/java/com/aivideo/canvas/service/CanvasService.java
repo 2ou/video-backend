@@ -33,6 +33,7 @@ public class CanvasService {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        return create(project,userId, String.valueOf(canvasJson),remark);
     }
 
     private ProjectVersion create(Project project, Long userId, String canvasJson, String remark){

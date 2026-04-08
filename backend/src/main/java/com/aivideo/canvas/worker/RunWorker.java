@@ -58,6 +58,7 @@ public class RunWorker {
                 payload.put("params", in.getOrDefault("params", Map.of()));
                 payload.put("prompt", prompt);
                 payload.put("input_asset_id", assetId);
+                Map<String,Object> payload = Map.of("model", ((Map<?,?>)in.getOrDefault("params", Map.of())).getOrDefault("model", "video-model-a"), "params", in.getOrDefault("params", Map.of()), "prompt", prompt, "input_asset_id", assetId);
                 String taskId = kieService.submitVideoTask(payload);
                 node.setProvider("kie"); node.setProviderTaskId(taskId); node.setStatus("running"); node.setStartedAt(LocalDateTime.now());
                 nodeRepository.save(node);

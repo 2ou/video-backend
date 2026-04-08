@@ -59,6 +59,7 @@ public class ProjectController {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        return BaseResponse.ok(Map.of("project_id", id, "version_id", v.getId(), "version_no", v.getVersionNo(), "canvas_json", v.getCanvasJson()));
     }
 
     @PutMapping("/api/v1/projects/{id}/canvas")
@@ -72,5 +73,6 @@ public class ProjectController {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        return BaseResponse.ok(Map.of("project_id", id, "version_id", v.getId(), "version_no", v.getVersionNo(), "canvas_json", v.getCanvasJson()));
     }
 }

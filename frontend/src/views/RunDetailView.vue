@@ -33,6 +33,7 @@ import { onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useRunStore } from '../stores/run'
 
+
 const runStore = useRunStore()
 const route = useRoute()
 const runId = Number(route.params.id)

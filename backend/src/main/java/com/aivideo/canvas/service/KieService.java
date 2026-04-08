@@ -37,6 +37,7 @@ public class KieService {
     public Map<String,Object> queryTask(String providerTaskId){
         try {
             ResponseEntity<Map> resp = restTemplate.exchange(kieProperties.getBaseUrl()+"/v1/video/tasks/"+providerTaskId, HttpMethod.GET, new HttpEntity<>(null, headers()), Map.class);
+            ResponseEntity<Map> resp = restTemplate.exchange(kieProperties.getBaseUrl()+"/v1/video/tasks/"+providerTaskId, HttpMethod.GET, new HttpEntity<>(headers()), Map.class);
             return resp.getBody();
         } catch (Exception e){
             throw new AppException("KIE_QUERY_FAILED","KIE query failed");
