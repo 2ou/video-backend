@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -52,6 +53,11 @@ public class RunWorker {
             for (WorkflowRunNode node : nodes) {
                 if (!"kie_video_task".equals(node.getNodeType())) { node.setStatus("success"); nodeRepository.save(node); continue; }
                 Map<String,Object> in = objectMapper.readValue(node.getInputJson(), new TypeReference<>(){});
+                Map<String,Object> payload = new HashMap<>();
+                payload.put("model", ((Map<?,?>)in.getOrDefault("params", Map.of())).getOrDefault("model", "video-model-a"));
+                payload.put("params", in.getOrDefault("params", Map.of()));
+                payload.put("prompt", prompt);
+                payload.put("input_asset_id", assetId);
                 Map<String,Object> payload = Map.of("model", ((Map<?,?>)in.getOrDefault("params", Map.of())).getOrDefault("model", "video-model-a"), "params", in.getOrDefault("params", Map.of()), "prompt", prompt, "input_asset_id", assetId);
                 String taskId = kieService.submitVideoTask(payload);
                 node.setProvider("kie"); node.setProviderTaskId(taskId); node.setStatus("running"); node.setStartedAt(LocalDateTime.now());

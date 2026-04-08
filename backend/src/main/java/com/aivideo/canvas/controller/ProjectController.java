@@ -7,6 +7,7 @@ import com.aivideo.canvas.entity.ProjectVersion;
 import com.aivideo.canvas.service.AuthService;
 import com.aivideo.canvas.service.CanvasService;
 import com.aivideo.canvas.service.ProjectService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -14,6 +15,7 @@ import java.util.Map;
 
 @RestController
 public class ProjectController {
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final AuthService authService;
     private final ProjectService projectService;
     private final CanvasService canvasService;
@@ -51,6 +53,12 @@ public class ProjectController {
         Long userId = authService.me(authorization).getId();
         Project p = projectService.get(userId, id);
         ProjectVersion v = canvasService.getOrInit(p, userId);
+        try {
+            Object canvasObj = objectMapper.readValue(v.getCanvasJson(), Object.class);
+            return BaseResponse.ok(Map.of("project_id", id, "version_id", v.getId(), "version_no", v.getVersionNo(), "canvas_json", canvasObj));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         return BaseResponse.ok(Map.of("project_id", id, "version_id", v.getId(), "version_no", v.getVersionNo(), "canvas_json", v.getCanvasJson()));
     }
 
@@ -59,6 +67,12 @@ public class ProjectController {
         Long userId = authService.me(authorization).getId();
         Project p = projectService.get(userId, id);
         ProjectVersion v = canvasService.save(p, userId, req.getCanvasJson(), req.getRemark());
+        try {
+            Object canvasObj = objectMapper.readValue(v.getCanvasJson(), Object.class);
+            return BaseResponse.ok(Map.of("project_id", id, "version_id", v.getId(), "version_no", v.getVersionNo(), "canvas_json", canvasObj));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         return BaseResponse.ok(Map.of("project_id", id, "version_id", v.getId(), "version_no", v.getVersionNo(), "canvas_json", v.getCanvasJson()));
     }
 }

@@ -27,6 +27,10 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useProjectStore } from '../stores/project'
+import { useUserStore } from '../stores/user'
 
 
 const projectStore = useProjectStore()

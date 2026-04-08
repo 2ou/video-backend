@@ -1,3 +1,5 @@
+import { defineStore } from 'pinia'
+import { getCanvasApi, saveCanvasApi } from '../api/projects'
 
 
 export const useCanvasStore = defineStore('canvas', {

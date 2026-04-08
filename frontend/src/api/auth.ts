@@ -1,4 +1,5 @@
 import http from '../utils/http'
+import type { BaseResponse } from '../types/common'
 
 
 export const loginApi = (username: string, password: string) =>

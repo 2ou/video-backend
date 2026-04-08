@@ -1,3 +1,4 @@
+import { createRouter, createWebHistory } from 'vue-router'
 
 import LoginView from '../views/LoginView.vue'
 import ProjectListView from '../views/ProjectListView.vue'
