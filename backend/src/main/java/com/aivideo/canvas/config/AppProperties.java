@@ -12,4 +12,17 @@ public class AppProperties {
     private Integer jwtExpireMinutes;
     private String publicBaseUrl;
     private String uploadDir;
+    private Oss oss = new Oss();
+
+    @Data
+    public static class Oss {
+        private String endpoint;
+        private String region;
+        private String bucket;
+        private String accessKeyId;
+        private String accessKeySecret;
+        private String publicBaseUrl;
+        private String keyPrefix = "assets";
+        private Integer ticketExpireSeconds = 900;
+    }
 }

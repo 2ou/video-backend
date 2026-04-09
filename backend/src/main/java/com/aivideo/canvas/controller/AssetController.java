@@ -6,7 +6,6 @@ import com.aivideo.canvas.entity.Asset;
 import com.aivideo.canvas.service.AssetService;
 import com.aivideo.canvas.service.AuthService;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/assets")
@@ -16,12 +15,23 @@ public class AssetController {
 
     public AssetController(AssetService assetService, AuthService authService) { this.assetService = assetService; this.authService = authService; }
 
-    @PostMapping("/upload")
-    public BaseResponse<Asset> upload(@RequestHeader("Authorization") String authorization,
-                                      @RequestParam("file") MultipartFile file,
-                                      @RequestParam(value = "project_id", required = false) Long projectId) throws Exception {
+    @PostMapping("/upload-ticket")
+    public BaseResponse<AssetDtos.UploadTicketData> getUploadTicket(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody AssetDtos.UploadTicketReq req,
+            @RequestParam(value = "project_id", required = false) Long projectId
+    ) {
         Long userId = authService.me(authorization).getId();
-        return BaseResponse.ok(assetService.upload(userId, projectId, file));
+        return BaseResponse.ok(assetService.getUploadTicket(userId, projectId, req));
+    }
+
+    @PostMapping("/confirm-upload")
+    public BaseResponse<AssetDtos.ConfirmUploadData> confirmUpload(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody AssetDtos.ConfirmUploadReq req
+    ) {
+        Long userId = authService.me(authorization).getId();
+        return BaseResponse.ok(assetService.confirmUpload(userId, req));
     }
 
     @GetMapping("/{assetId}")

@@ -274,10 +274,10 @@ import { computed, watch } from 'vue'
 import type { UploadRequestOptions } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import {
+  directUploadAssetApi,
   generateImageApi,
   polishPromptApi,
-  reversePromptApi,
-  uploadAssetApi
+  reversePromptApi
 } from '../../api/assets'
 import {
   IMAGE_GENERATION_MODELS,
@@ -347,8 +347,9 @@ const getByPath = (source: Record<string, any>, path: string) => {
 const uploadAssetTo = async (opt: UploadRequestOptions, path: string, append = false) => {
   if (!props.selected) return
   try {
-    const res = await uploadAssetApi(opt.file as File, props.projectId)
-    const assetId = res.data.data.id
+    const res = await directUploadAssetApi(opt.file as File, props.projectId)
+    const data = res.data?.data || {}
+    const assetId = data.asset_id || data.id
 
     if (append) {
       const current = getByPath(props.selected.data, path)

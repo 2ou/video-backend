@@ -6,7 +6,6 @@ import com.aivideo.canvas.entity.Asset;
 import com.aivideo.canvas.repository.AssetRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,7 +14,12 @@ import java.util.Set;
 
 @Service
 public class AssetService {
-    private static final Set<String> SUPPORTED_IMAGE_MODELS = Set.of("google/imagen4", "google/imagen4-fast");
+    private static final Set<String> SUPPORTED_IMAGE_MODELS = Set.of(
+            "google/imagen4",
+            "google/imagen4-fast",
+            "google/nano-banana-pro",
+            "google/nano-banana-2"
+    );
 
     private final AssetRepository assetRepository;
     private final StorageService storageService;
@@ -28,29 +32,65 @@ public class AssetService {
         this.kieService = kieService;
     }
 
-    public Asset upload(Long userId, Long projectId, MultipartFile file) throws Exception {
-        if (file == null || file.isEmpty()) {
-            throw new AppException("VALIDATION_ERROR", "file is required");
+    public AssetDtos.UploadTicketData getUploadTicket(Long userId, Long projectId, AssetDtos.UploadTicketReq req) {
+        if (req == null) throw new AppException("VALIDATION_ERROR", "request body is required");
+        if (req.getFileName() == null || req.getFileName().isBlank()) {
+            throw new AppException("VALIDATION_ERROR", "file_name is required");
+        }
+        if (req.getFileSize() == null || req.getFileSize() <= 0) {
+            throw new AppException("VALIDATION_ERROR", "file_size must be greater than 0");
         }
 
-        Map<String, Object> saved = storageService.saveUpload(file, "raw");
-        Asset a = new Asset();
-        a.setUserId(userId);
-        a.setProjectId(projectId);
-        String originalName = file.getOriginalFilename();
-        a.setFileName(originalName == null || originalName.isBlank() ? "upload_" + System.currentTimeMillis() : originalName);
+        String mimeType = normalizeMimeType(req.getMimeType());
+        StorageService.UploadTicket ticket = storageService.createUploadTicket(userId, projectId, req.getFileName(), mimeType);
+        return new AssetDtos.UploadTicketData(
+                ticket.getUploadUrl(),
+                ticket.getObjectKey(),
+                ticket.getFileUrl(),
+                ticket.getMethod(),
+                ticket.getExpireAt(),
+                ticket.getHeaders()
+        );
+    }
 
-        String mimeType = file.getContentType() == null || file.getContentType().isBlank()
-                ? "application/octet-stream"
-                : file.getContentType();
-        a.setFileType(mimeType.startsWith("video") ? "video" : "image");
-        a.setMimeType(mimeType);
-        a.setFileSize(((Number) saved.get("size")).longValue());
-        a.setStorageType("local");
-        a.setStoragePath(String.valueOf(saved.get("storagePath")));
-        a.setFileUrl(String.valueOf(saved.get("fileUrl")));
-        a.setMetaJson("{}");
-        return assetRepository.save(a);
+    public AssetDtos.ConfirmUploadData confirmUpload(Long userId, AssetDtos.ConfirmUploadReq req) {
+        if (req == null) throw new AppException("VALIDATION_ERROR", "request body is required");
+        if (req.getObjectKey() == null || req.getObjectKey().isBlank()) {
+            throw new AppException("VALIDATION_ERROR", "object_key is required");
+        }
+        // Prevent client from confirming objects outside the current user's key namespace.
+        if (!storageService.isUserObjectKey(userId, req.getObjectKey())) {
+            throw new AppException("VALIDATION_ERROR", "object_key is not allowed for current user");
+        }
+
+        Asset existed = assetRepository.findByUserIdAndStoragePath(userId, req.getObjectKey()).orElse(null);
+        if (existed != null) {
+            return new AssetDtos.ConfirmUploadData(existed.getId(), existed.getFileUrl());
+        }
+
+        // Confirm step reads object metadata from OSS to avoid trusting client-side file size/type.
+        StorageService.StoredObjectInfo objectInfo = storageService.getObjectInfo(req.getObjectKey());
+        if (req.getFileSize() != null && req.getFileSize() > 0 && !req.getFileSize().equals(objectInfo.getSize())) {
+            throw new AppException("VALIDATION_ERROR", "file_size mismatch");
+        }
+
+        String resolvedName = normalizeFileName(req.getFileName(), req.getObjectKey());
+        String mimeType = normalizeMimeType(req.getMimeType(), objectInfo.getContentType());
+        String fileType = resolveFileType(mimeType);
+
+        Asset asset = new Asset();
+        asset.setUserId(userId);
+        asset.setProjectId(req.getProjectId());
+        asset.setFileName(resolvedName);
+        asset.setFileType(fileType);
+        asset.setMimeType(mimeType);
+        asset.setFileSize(objectInfo.getSize());
+        asset.setStorageType(storageService.getStorageType());
+        asset.setStoragePath(req.getObjectKey());
+        asset.setFileUrl(storageService.buildPublicUrl(req.getObjectKey()));
+        asset.setMetaJson(buildConfirmMeta(req.getObjectKey(), objectInfo));
+        Asset created = assetRepository.save(asset);
+        return new AssetDtos.ConfirmUploadData(created.getId(), created.getFileUrl());
     }
 
     public Asset getAsset(Long userId, Long assetId) {
@@ -118,7 +158,7 @@ public class AssetService {
             asset.setFileType("image");
             asset.setMimeType(contentType == null || contentType.isBlank() ? "image/png" : contentType);
             asset.setFileSize(((Number) saved.getOrDefault("size", 0)).longValue());
-            asset.setStorageType("local");
+            asset.setStorageType(storageService.getStorageType());
             asset.setStoragePath(String.valueOf(saved.get("storagePath")));
             asset.setFileUrl(String.valueOf(saved.get("fileUrl")));
             asset.setMetaJson(objectMapper.writeValueAsString(Map.of(
@@ -181,9 +221,51 @@ public class AssetService {
         if (resolved.equalsIgnoreCase("google")) {
             resolved = "google/imagen4-fast";
         }
+        if (resolved.equalsIgnoreCase("nano-banana-pro")) {
+            resolved = "google/nano-banana-pro";
+        }
+        if (resolved.equalsIgnoreCase("nano-banana-2")) {
+            resolved = "google/nano-banana-2";
+        }
         if (!SUPPORTED_IMAGE_MODELS.contains(resolved)) {
             throw new AppException("VALIDATION_ERROR", "unsupported image model: " + model);
         }
         return resolved;
+    }
+
+    private String normalizeMimeType(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) return value.trim();
+        }
+        return "application/octet-stream";
+    }
+
+    private String resolveFileType(String mimeType) {
+        if (mimeType == null || mimeType.isBlank()) return "image";
+        String lower = mimeType.toLowerCase();
+        if (lower.startsWith("video/")) return "video";
+        if (lower.startsWith("audio/")) return "audio";
+        return "image";
+    }
+
+    private String normalizeFileName(String fileName, String objectKey) {
+        if (fileName != null && !fileName.isBlank()) return fileName.trim();
+        int slash = objectKey == null ? -1 : objectKey.lastIndexOf('/');
+        if (slash >= 0 && slash < objectKey.length() - 1) {
+            return objectKey.substring(slash + 1);
+        }
+        return "upload_" + System.currentTimeMillis();
+    }
+
+    private String buildConfirmMeta(String objectKey, StorageService.StoredObjectInfo objectInfo) {
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "source", "direct_upload",
+                    "object_key", objectKey,
+                    "etag", objectInfo.getEtag() == null ? "" : objectInfo.getEtag()
+            ));
+        } catch (Exception e) {
+            return "{}";
+        }
     }
 }

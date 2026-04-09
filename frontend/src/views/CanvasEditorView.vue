@@ -79,7 +79,7 @@ import { useRoute, useRouter } from 'vue-router'
 import BasicNode from '../components/nodes/BasicNode.vue'
 import { useCanvasStore } from '../stores/canvas'
 import { useRunStore } from '../stores/run'
-import { uploadAssetApi } from '../api/assets'
+import { directUploadAssetApi } from '../api/assets'
 import {
   NODE_CATALOG,
   SELECTABLE_NODE_TYPES,
@@ -238,9 +238,10 @@ const run = async () => {
 
 const uploadReq = async (opt: UploadRequestOptions) => {
   try {
-    const res = await uploadAssetApi(opt.file as File, projectId)
-    const assetId = res.data?.data?.id
-    const fileUrl = res.data?.data?.file_url || ''
+    const res = await directUploadAssetApi(opt.file as File, projectId)
+    const data = res.data?.data || {}
+    const assetId = data.asset_id || data.id
+    const fileUrl = data.file_url || ''
     if (!assetId) {
       throw new Error('upload response missing asset id')
     }

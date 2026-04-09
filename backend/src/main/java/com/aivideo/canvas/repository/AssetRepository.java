@@ -7,4 +7,5 @@ import java.util.Optional;
 
 public interface AssetRepository extends JpaRepository<Asset, Long> {
     Optional<Asset> findByIdAndUserId(Long id, Long userId);
+    Optional<Asset> findByUserIdAndStoragePath(Long userId, String storagePath);
 }

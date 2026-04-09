@@ -215,7 +215,7 @@ import type { UploadRequestOptions } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { useRoute } from 'vue-router'
-import { generateImageApi, getAssetApi, polishPromptApi, reversePromptApi, uploadAssetApi } from '../../api/assets'
+import { directUploadAssetApi, generateImageApi, getAssetApi, polishPromptApi, reversePromptApi } from '../../api/assets'
 import {
   IMAGE_GENERATION_MODELS,
   TEXT_MODELS,
@@ -373,9 +373,10 @@ const getByPath = (source: Record<string, any>, path: string) => {
 
 const uploadAssetTo = async (opt: UploadRequestOptions, path: string, append = false) => {
   try {
-    const res = await uploadAssetApi(opt.file as File, projectId.value)
-    const assetId = res.data?.data?.id
-    const fileUrl = res.data?.data?.file_url || ''
+    const res = await directUploadAssetApi(opt.file as File, projectId.value)
+    const data = res.data?.data || {}
+    const assetId = data.asset_id || data.id
+    const fileUrl = data.file_url || ''
     if (!assetId) {
       throw new Error('upload response missing asset id')
     }
