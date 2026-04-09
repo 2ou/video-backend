@@ -53,7 +53,7 @@ public class PollingWorker {
         }
 
         Map<String,Object> raw = kieService.queryTask(node.getProviderTaskId());
-        String status = kieService.normalizeStatus(String.valueOf(raw.getOrDefault("status", ((Map<?,?>)raw.getOrDefault("data", Map.of())).get("status"))));
+        String status = kieService.resolveTaskStatus(raw);
         if (List.of("queued","running").contains(status)) { scheduleWithAttempt(runNodeId, attempt+1, 5); return; }
 
         if ("success".equals(status)) {
@@ -74,7 +74,13 @@ public class PollingWorker {
         }
 
         node.setStatus("failed");
-        node.setErrorMessage(String.valueOf(raw.getOrDefault("message", "KIE task failed")));
+        Object error = raw.get("message");
+        if (error == null) error = raw.get("msg");
+        if (error == null && raw.get("data") instanceof Map<?, ?> data) {
+            error = data.get("failReason");
+            if (error == null) error = data.get("fail_reason");
+        }
+        node.setErrorMessage(error == null ? "KIE task failed" : String.valueOf(error));
         node.setFinishedAt(LocalDateTime.now());
         run.setStatus("failed"); run.setErrorMessage(node.getErrorMessage()); run.setFinishedAt(LocalDateTime.now());
         nodeRepository.save(node); runRepository.save(run);

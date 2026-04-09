@@ -1,6 +1,7 @@
 package com.aivideo.canvas.controller;
 
 import com.aivideo.canvas.common.BaseResponse;
+import com.aivideo.canvas.dto.AssetDtos;
 import com.aivideo.canvas.entity.Asset;
 import com.aivideo.canvas.service.AssetService;
 import com.aivideo.canvas.service.AuthService;
@@ -21,5 +22,33 @@ public class AssetController {
                                       @RequestParam(value = "project_id", required = false) Long projectId) throws Exception {
         Long userId = authService.me(authorization).getId();
         return BaseResponse.ok(assetService.upload(userId, projectId, file));
+    }
+
+    @PostMapping("/reverse-prompt")
+    public BaseResponse<AssetDtos.ReversePromptData> reversePrompt(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody AssetDtos.ReversePromptReq req
+    ) {
+        Long userId = authService.me(authorization).getId();
+        return BaseResponse.ok(assetService.reversePrompt(userId, req.getAssetId(), req.getHint()));
+    }
+
+    @PostMapping("/prompt-polish")
+    public BaseResponse<AssetDtos.PromptPolishData> promptPolish(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody AssetDtos.PromptPolishReq req
+    ) {
+        authService.me(authorization);
+        return BaseResponse.ok(assetService.polishPrompt(req.getText(), req.getModel(), req.getStyleHint()));
+    }
+
+    @PostMapping("/generate-image")
+    public BaseResponse<AssetDtos.GenerateImageData> generateImage(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody AssetDtos.GenerateImageReq req,
+            @RequestParam(value = "project_id", required = false) Long projectId
+    ) {
+        Long userId = authService.me(authorization).getId();
+        return BaseResponse.ok(assetService.generateImage(userId, projectId, req));
     }
 }

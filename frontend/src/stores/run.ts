@@ -14,7 +14,22 @@ export const useRunStore = defineStore('run', {
     async loadRun(runId: number) {
       const [runRes, nodeRes] = await Promise.all([getRunApi(runId), getRunNodesApi(runId)])
       this.run = runRes.data.data
-      this.nodes = nodeRes.data.data
+      this.nodes = (nodeRes.data.data || []).map((node: any) => ({
+        ...node,
+        input_json: parseJson(node.input_json),
+        output_json: parseJson(node.output_json)
+      }))
     }
   }
 })
+
+const parseJson = (value: any) => {
+  if (!value) return {}
+  if (typeof value === 'object') return value
+  if (typeof value !== 'string') return {}
+  try {
+    return JSON.parse(value)
+  } catch {
+    return {}
+  }
+}

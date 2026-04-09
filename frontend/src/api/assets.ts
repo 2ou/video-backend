@@ -6,3 +6,17 @@ export const uploadAssetApi = (file: File, projectId?: number) => {
   if (projectId) formData.append('project_id', String(projectId))
   return http.post('/api/v1/assets/upload', formData)
 }
+
+export const reversePromptApi = (assetId: number, hint?: string) =>
+  http.post('/api/v1/assets/reverse-prompt', { asset_id: assetId, hint })
+
+export const polishPromptApi = (payload: { text: string; model: string; style_hint?: string }) =>
+  http.post('/api/v1/assets/prompt-polish', payload)
+
+export const generateImageApi = (
+  payload: { model: string; prompt: string; negative_prompt?: string; aspect_ratio?: string },
+  projectId?: number
+) => {
+  const query = projectId ? `?project_id=${projectId}` : ''
+  return http.post(`/api/v1/assets/generate-image${query}`, payload)
+}

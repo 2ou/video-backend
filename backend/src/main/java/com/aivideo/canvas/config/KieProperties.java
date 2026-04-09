@@ -10,4 +10,5 @@ import org.springframework.context.annotation.Configuration;
 public class KieProperties {
     private String baseUrl;
     private String apiKey;
+    private String callbackUrl;
 }
