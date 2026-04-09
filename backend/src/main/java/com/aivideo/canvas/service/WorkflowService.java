@@ -20,7 +20,12 @@ import java.util.Set;
 
 @Service
 public class WorkflowService {
-    private static final Set<String> SUPPORTED = Set.of("input_video", "prompt_input", "kie_video_task", "output_video");
+    private static final Set<String> SUPPORTED = Set.of(
+            // 原子化 Data Flow 节点
+            "text", "image", "audio", "video_gen",
+            // 旧节点类型（兼容）
+            "input_video", "prompt_input", "kie_video_task", "output_video"
+    );
     private final ProjectVersionRepository versionRepository;
     private final WorkflowRunRepository runRepository;
     private final WorkflowRunNodeRepository nodeRepository;

@@ -40,27 +40,26 @@
 
         <div class="canvas-tip">左键双击空白画布添加节点</div>
 
-        <div
-            v-if="nodePicker.visible"
-            class="node-picker"
-            :style="{ left: `${nodePicker.x}px`, top: `${nodePicker.y}px` }"
-            @click.stop
-        >
-          <div class="picker-title">选择要添加的节点</div>
-          <button
-              v-for="item in pickableNodes"
+        <div v-if="nodePicker.visible" class="node-picker" :style="{ left: `${nodePicker.x}px`, top: `${nodePicker.y}px` }" @click.stop>
+          <div class="picker-title">添加节点</div>
+
+          <div v-for="group in pickerGroups" :key="group.key" class="picker-group">
+            <div class="picker-group-title">{{ group.title }}</div>
+            <button
+              v-for="item in group.items"
               :key="item.type"
               type="button"
               class="picker-item"
               :style="{ '--picker-color': item.accent }"
               @click="handleNodePicked(item.type)"
-          >
-            <span class="picker-icon">{{ item.icon }}</span>
-            <span class="picker-info">
-              <span>{{ item.title }}</span>
-              <small>{{ item.subtitle }}</small>
-            </span>
-          </button>
+            >
+              <span class="picker-icon">{{ item.icon }}</span>
+              <span class="picker-info">
+                <span>{{ item.title }}</span>
+                <small>{{ item.subtitle }}</small>
+              </span>
+            </button>
+          </div>
         </div>
       </section>
     </div>
@@ -68,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import type { UploadRequestOptions } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import type { VueFlowStore } from '@vue-flow/core'
@@ -76,11 +75,15 @@ import { VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { useRoute, useRouter } from 'vue-router'
-import BasicNode from '../components/nodes/BasicNode.vue'
+import TextNode from '../components/nodes/TextNode.vue'
+import ImageNode from '../components/nodes/ImageNode.vue'
+import AudioNode from '../components/nodes/AudioNode.vue'
+import VideoGenNode from '../components/nodes/VideoGenNode.vue'
 import { useCanvasStore } from '../stores/canvas'
-import { useRunStore } from '../stores/run'
+import { compileGraphForRun, useRunStore } from '../stores/run'
 import { directUploadAssetApi } from '../api/assets'
 import {
+  ATOMIC_NODE_GROUPS,
   NODE_CATALOG,
   SELECTABLE_NODE_TYPES,
   createDefaultNodeData,
@@ -98,13 +101,19 @@ const canvasRef = ref<HTMLElement | null>(null)
 const flowStore = ref<VueFlowStore | null>(null)
 
 const nodeTypes = {
-  prompt_input: BasicNode,
-  input_video: BasicNode,
-  kie_video_task: BasicNode,
-  output_video: BasicNode
+  text: TextNode,
+  image: ImageNode,
+  audio: AudioNode,
+  video_gen: VideoGenNode
 }
 
 const pickableNodes = NODE_CATALOG.filter((item) => SELECTABLE_NODE_TYPES.includes(item.type))
+const pickerGroups = computed(() =>
+  ATOMIC_NODE_GROUPS.map((group) => ({
+    ...group,
+    items: pickableNodes.filter((item) => item.group === group.key)
+  })).filter((group) => group.items.length > 0)
+)
 
 const nodePicker = reactive({
   visible: false,
@@ -231,6 +240,8 @@ const save = async () => {
 }
 
 const run = async () => {
+  // 运行前先做图编译：沿着 edges 收集上游数据注入 video_gen.input_payload
+  compileGraphForRun(canvasStore.canvas)
   await save()
   const runId = await runStore.runProject(projectId)
   router.push(`/runs/${runId}`)
@@ -246,11 +257,13 @@ const uploadReq = async (opt: UploadRequestOptions) => {
       throw new Error('upload response missing asset id')
     }
 
-    const imageNode = canvasStore.canvas.nodes.find((node: any) => node.type === 'input_video')
+    const imageNode = canvasStore.canvas.nodes.find((node: any) => node.type === 'image')
     if (imageNode) {
       ensureNodeDataDefaults(imageNode)
       imageNode.data.asset_id = assetId
-      if (fileUrl) imageNode.data.asset_url = fileUrl
+      if (fileUrl) imageNode.data.url = fileUrl
+    } else {
+      ElMessage.warning('当前画布没有 Image 节点，素材未自动挂载')
     }
 
     ElMessage.success(`素材上传成功: #${assetId}`)
@@ -356,7 +369,7 @@ const uploadReq = async (opt: UploadRequestOptions) => {
 .node-picker {
   position: absolute;
   z-index: 9999;
-  width: 230px;
+  width: 248px;
   border-radius: 14px;
   border: 1px solid rgba(123, 140, 194, 0.45);
   background: rgba(14, 20, 34, 0.97);
@@ -368,6 +381,20 @@ const uploadReq = async (opt: UploadRequestOptions) => {
   font-size: 12px;
   color: rgba(205, 215, 247, 0.78);
   margin-bottom: 8px;
+}
+
+.picker-group {
+  margin-bottom: 10px;
+}
+
+.picker-group:last-child {
+  margin-bottom: 0;
+}
+
+.picker-group-title {
+  font-size: 11px;
+  color: rgba(178, 194, 236, 0.84);
+  margin: 4px 2px 6px;
 }
 
 .picker-item {

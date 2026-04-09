@@ -58,48 +58,41 @@ public class RunWorker {
         List<WorkflowRunNode> runNodes = nodeRepository.findByRunIdOrderByIdAsc(runId);
 
         try {
-            Map<String, Object> canvas = objectMapper.readValue(version.getCanvasJson(), new TypeReference<>() {
-            });
+            Map<String, Object> canvas = parseJsonMap(version.getCanvasJson());
             Map<String, Object> promptNodeData = findNodeData(canvas, "prompt_input");
             Map<String, Object> imageNodeData = findNodeData(canvas, "input_video");
 
-            String prompt = resolvePrompt(promptNodeData);
+            String legacyPrompt = resolvePrompt(promptNodeData);
             String imageMode = asString(imageNodeData.get("mode"), "");
             String imageToImagePrompt = asString(imageNodeData.get("image_to_image_prompt"), "");
             if ("image_to_image".equals(imageMode) && !imageToImagePrompt.isBlank()) {
-                prompt = prompt.isBlank() ? imageToImagePrompt : prompt + ", " + imageToImagePrompt;
+                legacyPrompt = legacyPrompt.isBlank() ? imageToImagePrompt : legacyPrompt + ", " + imageToImagePrompt;
             }
-            Object inputAssetId = imageNodeData.get("asset_id");
+            Object legacyInputAssetId = imageNodeData.get("asset_id");
 
-            boolean hasKieNode = false;
+            boolean hasAsyncTask = false;
 
             for (WorkflowRunNode node : runNodes) {
-                if (!"kie_video_task".equals(node.getNodeType())) {
-                    node.setStatus("success");
-                    nodeRepository.save(node);
+                String nodeType = asString(node.getNodeType(), "");
+
+                if ("video_gen".equals(nodeType)) {
+                    submitAtomicVideoGenTask(node, run.getUserId());
+                    hasAsyncTask = true;
                     continue;
                 }
 
-                hasKieNode = true;
-                Map<String, Object> nodeInput = readJsonMap(node.getInputJson());
-                Map<String, Object> params = toMutableMap(nodeInput.get("params"));
-                String generationMode = asString(nodeInput.get("mode"), asString(params.get("generation_mode"), "first_frame"));
-                params.put("generation_mode", generationMode);
+                // 旧节点兼容：保留 kie_video_task 执行逻辑
+                if ("kie_video_task".equals(nodeType)) {
+                    submitLegacyKieTask(node, run.getUserId(), legacyPrompt, legacyInputAssetId);
+                    hasAsyncTask = true;
+                    continue;
+                }
 
-                String model = asString(params.get("model"), "grok-imagine/text-to-video");
-                Map<String, Object> input = buildVideoInput(run.getUserId(), params, generationMode, inputAssetId, prompt);
-
-                String taskId = kieService.submitTask(model, input);
-                node.setProvider("kie");
-                node.setProviderTaskId(taskId);
-                node.setStatus("running");
-                node.setStartedAt(LocalDateTime.now());
+                node.setStatus("success");
                 nodeRepository.save(node);
-
-                pollingWorker.schedule(node.getId());
             }
 
-            if (hasKieNode) {
+            if (hasAsyncTask) {
                 run.setStatus("running");
             } else {
                 run.setStatus("success");
@@ -114,7 +107,100 @@ public class RunWorker {
         }
     }
 
-    private Map<String, Object> buildVideoInput(
+    /**
+     * 新架构核心逻辑：
+     * VideoGenNode 的 node.data 在前端运行前已被图编译器注入 input_payload。
+     * 后端这里只需要读取 input_payload 并转成最终 KIE payload。
+     */
+    private void submitAtomicVideoGenTask(WorkflowRunNode node, Long userId) {
+        Map<String, Object> nodeInput = readJsonMap(node.getInputJson());
+        Map<String, Object> inputPayload = toMutableMap(nodeInput.get("input_payload"));
+
+        String model = asString(firstNonNull(inputPayload.get("model"), nodeInput.get("model")), "seedance/2.0-real");
+        Map<String, Object> finalInput = buildAtomicVideoInput(userId, nodeInput, inputPayload);
+
+        String taskId = kieService.submitTask(model, finalInput);
+        node.setProvider("kie");
+        node.setProviderTaskId(taskId);
+        node.setStatus("running");
+        node.setStartedAt(LocalDateTime.now());
+        nodeRepository.save(node);
+        pollingWorker.schedule(node.getId());
+    }
+
+    private Map<String, Object> buildAtomicVideoInput(
+            Long userId,
+            Map<String, Object> nodeInput,
+            Map<String, Object> inputPayload
+    ) {
+        Map<String, Object> input = new LinkedHashMap<>();
+
+        // 透传基础参数（优先 input_payload，再回退 node 顶层字段）
+        copyPreferred(inputPayload, nodeInput, input, "prompt");
+        copyPreferred(inputPayload, nodeInput, input, "mode");
+        copyPreferred(inputPayload, nodeInput, input, "resolution");
+        copyPreferred(inputPayload, nodeInput, input, "aspect_ratio");
+        copyPreferred(inputPayload, nodeInput, input, "duration");
+        copyPreferred(inputPayload, nodeInput, input, "fps");
+        copyPreferred(inputPayload, nodeInput, input, "negative_prompt");
+        copyPreferred(inputPayload, nodeInput, input, "audio_sync");
+
+        // 1) first_frame_asset_id -> first_frame_url / image_url
+        Object firstFrameAssetId = firstNonNull(inputPayload.get("first_frame_asset_id"), nodeInput.get("first_frame_asset_id"));
+        String firstFrameUrl = resolveAssetUrl(firstFrameAssetId, userId);
+        if (firstFrameUrl != null && !firstFrameUrl.isBlank()) {
+            input.put("first_frame_url", firstFrameUrl);
+            input.put("image_url", firstFrameUrl);
+        }
+
+        // 2) last_frame_asset_id -> last_frame_url
+        Object lastFrameAssetId = firstNonNull(inputPayload.get("last_frame_asset_id"), nodeInput.get("last_frame_asset_id"));
+        String lastFrameUrl = resolveAssetUrl(lastFrameAssetId, userId);
+        if (lastFrameUrl != null && !lastFrameUrl.isBlank()) {
+            input.put("last_frame_url", lastFrameUrl);
+        }
+
+        // 3) multi_image_ids -> image_urls（多图）
+        List<Object> multiImageIds = toMutableList(firstNonNull(inputPayload.get("multi_image_ids"), nodeInput.get("multi_image_ids")));
+        List<String> multiImageUrls = resolveAssetUrls(multiImageIds, userId);
+        if (!multiImageUrls.isEmpty()) {
+            input.put("image_urls", multiImageUrls);
+            if (!input.containsKey("image_url")) {
+                input.put("image_url", multiImageUrls.get(0));
+            }
+        }
+
+        // 4) drive_audio_asset_id -> drive_audio_url / audio_url
+        Object driveAudioAssetId = firstNonNull(inputPayload.get("drive_audio_asset_id"), nodeInput.get("drive_audio_asset_id"));
+        String driveAudioUrl = resolveAssetUrl(driveAudioAssetId, userId);
+        if (driveAudioUrl != null && !driveAudioUrl.isBlank()) {
+            input.put("drive_audio_url", driveAudioUrl);
+            input.put("audio_url", driveAudioUrl);
+        }
+
+        return input;
+    }
+
+    // 旧逻辑：兼容 kie_video_task
+    private void submitLegacyKieTask(WorkflowRunNode node, Long userId, String prompt, Object inputAssetId) {
+        Map<String, Object> nodeInput = readJsonMap(node.getInputJson());
+        Map<String, Object> params = toMutableMap(nodeInput.get("params"));
+        String generationMode = asString(nodeInput.get("mode"), asString(params.get("generation_mode"), "first_frame"));
+        params.put("generation_mode", generationMode);
+
+        String model = asString(params.get("model"), "grok-imagine/text-to-video");
+        Map<String, Object> input = buildLegacyVideoInput(userId, params, generationMode, inputAssetId, prompt);
+
+        String taskId = kieService.submitTask(model, input);
+        node.setProvider("kie");
+        node.setProviderTaskId(taskId);
+        node.setStatus("running");
+        node.setStartedAt(LocalDateTime.now());
+        nodeRepository.save(node);
+        pollingWorker.schedule(node.getId());
+    }
+
+    private Map<String, Object> buildLegacyVideoInput(
             Long userId,
             Map<String, Object> params,
             String generationMode,
@@ -122,7 +208,6 @@ public class RunWorker {
             String prompt
     ) {
         Map<String, Object> input = new LinkedHashMap<>();
-
         if (!prompt.isBlank()) input.put("prompt", prompt);
         copyIfPresent(params, input, "duration");
         copyIfPresent(params, input, "resolution");
@@ -130,16 +215,15 @@ public class RunWorker {
         copyIfPresent(params, input, "negative_prompt");
         copyIfPresent(params, input, "aspect_ratio");
 
-        List<String> imageUrls = resolveImageUrls(userId, params, generationMode, inputAssetId);
+        List<String> imageUrls = resolveLegacyImageUrls(userId, params, generationMode, inputAssetId);
         if (!imageUrls.isEmpty()) {
             input.put("image_urls", imageUrls);
             input.put("image_url", imageUrls.get(0));
         }
-
         return input;
     }
 
-    private List<String> resolveImageUrls(Long userId, Map<String, Object> params, String mode, Object inputAssetId) {
+    private List<String> resolveLegacyImageUrls(Long userId, Map<String, Object> params, String mode, Object inputAssetId) {
         Object firstFrameAssetId = params.get("first_frame_asset_id");
         Object lastFrameAssetId = params.get("last_frame_asset_id");
         List<Object> gridAssetIds = toMutableList(params.get("grid_asset_ids"));
@@ -165,12 +249,16 @@ public class RunWorker {
             }
         }
 
-        List<String> imageUrls = new ArrayList<>();
-        for (Object candidateId : selectedAssetIds) {
+        return resolveAssetUrls(selectedAssetIds, userId);
+    }
+
+    private List<String> resolveAssetUrls(List<Object> assetIds, Long userId) {
+        List<String> urls = new ArrayList<>();
+        for (Object candidateId : assetIds) {
             String url = resolveAssetUrl(candidateId, userId);
-            if (url != null && !url.isBlank()) imageUrls.add(url);
+            if (url != null && !url.isBlank()) urls.add(url);
         }
-        return imageUrls;
+        return urls;
     }
 
     private String resolveAssetUrl(Object assetId, Long userId) {
@@ -178,7 +266,7 @@ public class RunWorker {
 
         Long parsedId;
         try {
-            parsedId = Long.parseLong(String.valueOf(assetId));
+            parsedId = Long.parseLong(String.valueOf(assetId).trim());
         } catch (Exception ignored) {
             return null;
         }
@@ -186,6 +274,18 @@ public class RunWorker {
         Asset asset = assetRepository.findById(parsedId).orElse(null);
         if (asset == null || !asset.getUserId().equals(userId)) return null;
         return asset.getFileUrl();
+    }
+
+    private void copyPreferred(
+            Map<String, Object> primary,
+            Map<String, Object> fallback,
+            Map<String, Object> target,
+            String key
+    ) {
+        Object value = firstNonNull(primary.get(key), fallback.get(key));
+        if (value == null) return;
+        if (value instanceof String text && text.isBlank()) return;
+        target.put(key, value);
     }
 
     private Map<String, Object> findNodeData(Map<String, Object> canvas, String nodeType) {
@@ -204,7 +304,6 @@ public class RunWorker {
             }
             return Map.of();
         }
-
         return Map.of();
     }
 
@@ -214,6 +313,17 @@ public class RunWorker {
             Map<String, Object> parsed = objectMapper.readValue(json, new TypeReference<>() {
             });
             return parsed == null ? new HashMap<>() : new HashMap<>(parsed);
+        } catch (Exception ignored) {
+            return new HashMap<>();
+        }
+    }
+
+    private Map<String, Object> parseJsonMap(String json) {
+        try {
+            if (json == null || json.isBlank()) return new HashMap<>();
+            Map<String, Object> parsed = objectMapper.readValue(json, new TypeReference<>() {
+            });
+            return parsed == null ? new HashMap<>() : parsed;
         } catch (Exception ignored) {
             return new HashMap<>();
         }
@@ -230,6 +340,15 @@ public class RunWorker {
 
     private List<Object> toMutableList(Object value) {
         if (value instanceof List<?> listValue) return new ArrayList<>(listValue);
+        if (value instanceof String text && !text.isBlank()) {
+            String[] parts = text.split(",");
+            List<Object> list = new ArrayList<>();
+            for (String part : parts) {
+                String trimmed = part.trim();
+                if (!trimmed.isBlank()) list.add(trimmed);
+            }
+            return list;
+        }
         return new ArrayList<>();
     }
 
@@ -244,6 +363,13 @@ public class RunWorker {
         if (value == null) return fallback;
         String text = String.valueOf(value).trim();
         return text.isBlank() ? fallback : text;
+    }
+
+    private Object firstNonNull(Object... values) {
+        for (Object value : values) {
+            if (value != null) return value;
+        }
+        return null;
     }
 
     private String resolvePrompt(Map<String, Object> promptNodeData) {
