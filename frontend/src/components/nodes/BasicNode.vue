@@ -74,6 +74,16 @@
             </div>
           </el-form-item>
 
+          <div v-if="data.asset_url" class="image-preview-wrap">
+            <el-image
+              :src="data.asset_url"
+              :preview-src-list="[data.asset_url]"
+              fit="cover"
+              class="image-preview"
+              preview-teleported
+            />
+          </div>
+
           <el-form-item label="图生图提示词">
             <el-input v-model="data.image_to_image_prompt" type="textarea" :rows="2" />
           </el-form-item>
@@ -81,10 +91,10 @@
           <el-form-item label="Google 模型">
             <el-select v-model="data.generated_image_model">
               <el-option
-                v-for="item in imageGenerationModels"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
+                  v-for="item in imageGenerationModels"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
               />
             </el-select>
           </el-form-item>
@@ -205,7 +215,7 @@ import type { UploadRequestOptions } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { useRoute } from 'vue-router'
-import { generateImageApi, polishPromptApi, reversePromptApi, uploadAssetApi } from '../../api/assets'
+import { generateImageApi, getAssetApi, polishPromptApi, reversePromptApi, uploadAssetApi } from '../../api/assets'
 import {
   IMAGE_GENERATION_MODELS,
   TEXT_MODELS,
@@ -261,13 +271,39 @@ const summaryText = computed(() => {
     return (props.data?.text || '').slice(0, 60) || '未填写提示词'
   }
   if (props.type === 'input_video') {
-    return props.data?.asset_id ? `素材 #${props.data.asset_id}` : '未上传图片素材'
+    return props.data?.asset_id
+      ? `${props.data?.asset_url ? '图片已上传' : '素材'} #${props.data.asset_id}`
+      : '未上传图片素材'
   }
   if (props.type === 'kie_video_task') {
     return `模型 ${props.data?.params?.model || 'grok-imagine/text-to-video'}`
   }
   return '等待上游节点处理完成'
 })
+
+// === 修复点：将 mergeDefaults 移到调用它的 ensureDataDefaults 之前 ===
+const mergeDefaults = (target: Record<string, any>, defaults: Record<string, any>) => {
+  Object.entries(defaults).forEach(([key, value]) => {
+    if (target[key] === undefined) {
+      target[key] = Array.isArray(value)
+          ? [...value]
+          : value && typeof value === 'object'
+              ? { ...(value as Record<string, any>) }
+              : value
+      return
+    }
+    if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        target[key] &&
+        typeof target[key] === 'object' &&
+        !Array.isArray(target[key])
+    ) {
+      mergeDefaults(target[key], value as Record<string, any>)
+    }
+  })
+}
 
 const ensureDataDefaults = () => {
   if (!props.data || typeof props.data !== 'object') return
@@ -276,44 +312,40 @@ const ensureDataDefaults = () => {
 }
 
 watch(
-  () => props.type,
-  () => ensureDataDefaults(),
-  { immediate: true }
+    () => props.type,
+    () => ensureDataDefaults(),
+    { immediate: true }
 )
 
 watch(
   () => props.data?.mode,
-  (mode) => {
-    if (props.type !== 'kie_video_task') return
-    if (!props.data.params || typeof props.data.params !== 'object') {
-      props.data.params = {}
-    }
-    props.data.params.generation_mode = mode
+    (mode) => {
+      if (props.type !== 'kie_video_task') return
+      if (!props.data.params || typeof props.data.params !== 'object') {
+        props.data.params = {}
+      }
+      props.data.params.generation_mode = mode
+    },
+    { immediate: true }
+)
+
+watch(
+  () => [props.type, props.data?.asset_id, props.data?.asset_url],
+  async () => {
+    if (props.type !== 'input_video') return
+    if (!props.data?.asset_id || props.data?.asset_url) return
+    await syncAssetPreview(Number(props.data.asset_id))
   },
   { immediate: true }
 )
 
-const mergeDefaults = (target: Record<string, any>, defaults: Record<string, any>) => {
-  Object.entries(defaults).forEach(([key, value]) => {
-    if (target[key] === undefined) {
-      target[key] = Array.isArray(value)
-        ? [...value]
-        : value && typeof value === 'object'
-        ? { ...(value as Record<string, any>) }
-        : value
-      return
-    }
-    if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      target[key] &&
-      typeof target[key] === 'object' &&
-      !Array.isArray(target[key])
-    ) {
-      mergeDefaults(target[key], value as Record<string, any>)
-    }
-  })
+const extractApiError = (error: any) => {
+  const message =
+    error?.response?.data?.message ||
+    error?.response?.data?.code ||
+    error?.message ||
+    'request failed'
+  return String(message)
 }
 
 const removeSelf = () => {
@@ -342,7 +374,11 @@ const getByPath = (source: Record<string, any>, path: string) => {
 const uploadAssetTo = async (opt: UploadRequestOptions, path: string, append = false) => {
   try {
     const res = await uploadAssetApi(opt.file as File, projectId.value)
-    const assetId = res.data.data.id
+    const assetId = res.data?.data?.id
+    const fileUrl = res.data?.data?.file_url || ''
+    if (!assetId) {
+      throw new Error('upload response missing asset id')
+    }
 
     if (append) {
       const current = getByPath(props.data, path)
@@ -352,10 +388,14 @@ const uploadAssetTo = async (opt: UploadRequestOptions, path: string, append = f
       setByPath(props.data, path, assetId)
     }
 
+    if (path === 'asset_id' && fileUrl) {
+      props.data.asset_url = fileUrl
+    }
+
     ElMessage.success(`上传成功: #${assetId}`)
     opt.onSuccess?.(res.data)
   } catch (error) {
-    ElMessage.error('素材上传失败')
+    ElMessage.error(`素材上传失败: ${extractApiError(error)}`)
     opt.onError?.(error as Error)
   }
 }
@@ -411,18 +451,20 @@ const generateImageFromPrompt = async () => {
 
   try {
     const res = await generateImageApi(
-      {
-        model: props.data.generated_image_model || 'google/imagen4-fast',
-        prompt,
-        negative_prompt: props.data.generate_negative_prompt || '',
-        aspect_ratio: props.data.generate_aspect_ratio || '16:9'
-      },
-      projectId.value
+        {
+          model: props.data.generated_image_model || 'google/imagen4-fast',
+          prompt,
+          negative_prompt: props.data.generate_negative_prompt || '',
+          aspect_ratio: props.data.generate_aspect_ratio || '16:9'
+        },
+        projectId.value
     )
 
     const assetId = res.data?.data?.asset_id
+    const assetUrl = res.data?.data?.asset_url
     if (assetId) {
       props.data.asset_id = Number(assetId)
+      if (assetUrl) props.data.asset_url = assetUrl
       ElMessage.success(`图像生成成功: #${assetId}`)
       return
     }
@@ -435,6 +477,19 @@ const generateImageFromPrompt = async () => {
 const clearGridAssets = () => {
   if (!props.data?.params) return
   props.data.params.grid_asset_ids = []
+}
+
+const syncAssetPreview = async (assetId: number) => {
+  if (!assetId || Number.isNaN(assetId)) return
+  try {
+    const res = await getAssetApi(assetId)
+    const url = res.data?.data?.file_url
+    if (url) {
+      props.data.asset_url = url
+    }
+  } catch (error) {
+    console.warn('asset preview load failed', extractApiError(error))
+  }
 }
 
 const formatAssetValue = (value: any) => {
@@ -549,6 +604,19 @@ const formatAssetValue = (value: any) => {
 
 .wide-btn {
   width: 100%;
+}
+
+.image-preview-wrap {
+  margin: 2px 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(137, 153, 202, 0.38);
+  overflow: hidden;
+}
+
+.image-preview {
+  width: 100%;
+  height: 120px;
+  display: block;
 }
 
 .grid-assets {

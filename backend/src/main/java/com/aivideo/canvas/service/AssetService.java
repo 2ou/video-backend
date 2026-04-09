@@ -29,19 +29,34 @@ public class AssetService {
     }
 
     public Asset upload(Long userId, Long projectId, MultipartFile file) throws Exception {
+        if (file == null || file.isEmpty()) {
+            throw new AppException("VALIDATION_ERROR", "file is required");
+        }
+
         Map<String, Object> saved = storageService.saveUpload(file, "raw");
         Asset a = new Asset();
         a.setUserId(userId);
         a.setProjectId(projectId);
-        a.setFileName(file.getOriginalFilename());
-        a.setFileType(file.getContentType() != null && file.getContentType().startsWith("video") ? "video" : "image");
-        a.setMimeType(file.getContentType());
+        String originalName = file.getOriginalFilename();
+        a.setFileName(originalName == null || originalName.isBlank() ? "upload_" + System.currentTimeMillis() : originalName);
+
+        String mimeType = file.getContentType() == null || file.getContentType().isBlank()
+                ? "application/octet-stream"
+                : file.getContentType();
+        a.setFileType(mimeType.startsWith("video") ? "video" : "image");
+        a.setMimeType(mimeType);
         a.setFileSize(((Number) saved.get("size")).longValue());
         a.setStorageType("local");
         a.setStoragePath(String.valueOf(saved.get("storagePath")));
         a.setFileUrl(String.valueOf(saved.get("fileUrl")));
         a.setMetaJson("{}");
         return assetRepository.save(a);
+    }
+
+    public Asset getAsset(Long userId, Long assetId) {
+        if (assetId == null) throw new AppException("VALIDATION_ERROR", "asset_id is required");
+        return assetRepository.findByIdAndUserId(assetId, userId)
+                .orElseThrow(() -> new AppException("NOT_FOUND", "asset not found"));
     }
 
     public AssetDtos.ReversePromptData reversePrompt(Long userId, Long assetId, String hint) {

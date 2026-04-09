@@ -16,20 +16,23 @@
     </header>
 
     <div class="editor-main">
-      <section ref="canvasRef" class="editor-canvas" @click.stop="onCanvasClick" @dblclick.stop.prevent="onCanvasDoubleClick">
+      <section
+          ref="canvasRef"
+          class="editor-canvas"
+          @click="onCanvasClick"
+          @dblclick.prevent="onCanvasDoubleClick"
+      >
         <VueFlow
-          v-model:nodes="canvasStore.canvas.nodes"
-          v-model:edges="canvasStore.canvas.edges"
-          class="workflow-flow"
-          :node-types="nodeTypes"
-          :default-viewport="canvasStore.canvas.viewport"
-          :zoom-on-double-click="false"
-          :min-zoom="0.2"
-          :max-zoom="2"
-          fit-view-on-init
-          @init="onPaneReady"
-          @pane-ready="onPaneReady"
-          @node-click="onNodeClick"
+            v-model:nodes="canvasStore.canvas.nodes"
+            v-model:edges="canvasStore.canvas.edges"
+            class="workflow-flow"
+            :node-types="nodeTypes"
+            :default-viewport="canvasStore.canvas.viewport"
+            :zoom-on-double-click="false"
+            :min-zoom="0.2"
+            :max-zoom="2"
+            fit-view-on-init
+            @pane-ready="onPaneReady"
         >
           <Background :gap="26" :size="1.2" pattern-color="rgba(97, 112, 157, 0.38)" />
           <Controls position="bottom-left" />
@@ -38,19 +41,19 @@
         <div class="canvas-tip">左键双击空白画布添加节点</div>
 
         <div
-          v-if="nodePicker.visible"
-          class="node-picker"
-          :style="{ left: `${nodePicker.x}px`, top: `${nodePicker.y}px` }"
-          @click.stop
+            v-if="nodePicker.visible"
+            class="node-picker"
+            :style="{ left: `${nodePicker.x}px`, top: `${nodePicker.y}px` }"
+            @click.stop
         >
           <div class="picker-title">选择要添加的节点</div>
           <button
-            v-for="item in pickableNodes"
-            :key="item.type"
-            type="button"
-            class="picker-item"
-            :style="{ '--picker-color': item.accent }"
-            @click="handleNodePicked(item.type)"
+              v-for="item in pickableNodes"
+              :key="item.type"
+              type="button"
+              class="picker-item"
+              :style="{ '--picker-color': item.accent }"
+              @click="handleNodePicked(item.type)"
           >
             <span class="picker-icon">{{ item.icon }}</span>
             <span class="picker-info">
@@ -139,18 +142,27 @@ const getDefaultInsertPosition = () => {
   })
 }
 
+// 终极修复点：强制触发 VueFlow 更新与 Pinia 响应式更新
 const addNode = (type: WorkflowNodeType, position?: { x: number; y: number }) => {
   const node = {
     id: nextNodeId(type),
     type,
-    position: position || getDefaultInsertPosition(),
+    position: {
+      x: position?.x || getDefaultInsertPosition().x,
+      y: position?.y || getDefaultInsertPosition().y
+    },
     data: createDefaultNodeData(type)
   }
 
-  const prev = Array.isArray(canvasStore.canvas.nodes) ? canvasStore.canvas.nodes : []
-  canvasStore.canvas = {
-    ...canvasStore.canvas,
-    nodes: [...prev, node]
+  // 1. 最稳妥的渲染方式：直接调用 Vue Flow 内部实例 API
+  if (flowStore.value && typeof flowStore.value.addNodes === 'function') {
+    flowStore.value.addNodes([node])
+  }
+
+  // 2. 强制触发 Pinia store 的更新，使用展开运算符产生新数组以确保触发视图响应
+  const currentNodes = Array.isArray(canvasStore.canvas.nodes) ? canvasStore.canvas.nodes : []
+  if (!currentNodes.some((n: any) => n.id === node.id)) {
+    canvasStore.canvas.nodes = [...currentNodes, node]
   }
 }
 
@@ -159,7 +171,8 @@ const isBlankCanvasTarget = (target: EventTarget | null) => {
   if (target.closest('.node-picker')) return false
   if (target.closest('.vue-flow__node')) return false
   if (target.closest('.vue-flow__controls')) return false
-  return Boolean(target.closest('.vue-flow__pane') || target.closest('.vue-flow__background'))
+  if (target.closest('.vue-flow__edge')) return false
+  return true
 }
 
 const openNodePicker = (event: MouseEvent) => {
@@ -169,15 +182,21 @@ const openNodePicker = (event: MouseEvent) => {
   const maxX = Math.max(14, rect.width - 240)
   const maxY = Math.max(14, rect.height - 220)
 
-  const flowPosition = flowStore.value
-    ? flowStore.value.screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-    : {
-        x: clamp(event.clientX - rect.left, 0, rect.width),
-        y: clamp(event.clientY - rect.top, 0, rect.height)
-      }
+  let flowX = 0
+  let flowY = 0
+
+  if (flowStore.value && typeof flowStore.value.screenToFlowCoordinate === 'function') {
+    const coords = flowStore.value.screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
+    flowX = coords.x
+    flowY = coords.y
+  } else {
+    flowX = clamp(event.clientX - rect.left, 0, rect.width)
+    flowY = clamp(event.clientY - rect.top, 0, rect.height)
+  }
 
   nodePicker.visible = true
-  nodePicker.position = flowPosition
+  // 解构生成新对象，避免由于底层代理导致的坐标引用错误
+  nodePicker.position = { x: flowX, y: flowY }
   nodePicker.x = clamp(event.clientX - rect.left, 14, maxX)
   nodePicker.y = clamp(event.clientY - rect.top, 14, maxY)
 }
@@ -192,16 +211,13 @@ const onCanvasDoubleClick = (event: MouseEvent) => {
   openNodePicker(event)
 }
 
-const onNodeClick = () => {
-  hideNodePicker()
-}
-
 const onPaneReady = (store: VueFlowStore) => {
   flowStore.value = store
 }
 
 const handleNodePicked = (type: WorkflowNodeType) => {
-  addNode(type, nodePicker.position)
+  // 传入拷贝的坐标点，确保安全
+  addNode(type, { ...nodePicker.position })
   hideNodePicker()
 }
 
@@ -223,18 +239,28 @@ const run = async () => {
 const uploadReq = async (opt: UploadRequestOptions) => {
   try {
     const res = await uploadAssetApi(opt.file as File, projectId)
-    const assetId = res.data.data.id
+    const assetId = res.data?.data?.id
+    const fileUrl = res.data?.data?.file_url || ''
+    if (!assetId) {
+      throw new Error('upload response missing asset id')
+    }
 
     const imageNode = canvasStore.canvas.nodes.find((node: any) => node.type === 'input_video')
     if (imageNode) {
       ensureNodeDataDefaults(imageNode)
       imageNode.data.asset_id = assetId
+      if (fileUrl) imageNode.data.asset_url = fileUrl
     }
 
     ElMessage.success(`素材上传成功: #${assetId}`)
     opt.onSuccess?.(res.data)
   } catch (error) {
-    ElMessage.error('素材上传失败')
+    const message =
+      (error as any)?.response?.data?.message ||
+      (error as any)?.response?.data?.code ||
+      (error as any)?.message ||
+      'request failed'
+    ElMessage.error(`素材上传失败: ${message}`)
     opt.onError?.(error as Error)
   }
 }
@@ -246,9 +272,9 @@ const uploadReq = async (opt: UploadRequestOptions) => {
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(circle at 25% 20%, rgba(28, 40, 68, 0.45), transparent 42%),
-    radial-gradient(circle at 75% 80%, rgba(19, 24, 44, 0.6), transparent 44%),
-    #070a11;
+      radial-gradient(circle at 25% 20%, rgba(28, 40, 68, 0.45), transparent 42%),
+      radial-gradient(circle at 75% 80%, rgba(19, 24, 44, 0.6), transparent 44%),
+      #070a11;
   color: #eef2ff;
   font-family: 'IBM Plex Sans', 'PingFang SC', 'Noto Sans SC', 'Segoe UI', sans-serif;
 }

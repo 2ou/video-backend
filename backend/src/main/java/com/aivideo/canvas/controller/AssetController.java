@@ -24,6 +24,15 @@ public class AssetController {
         return BaseResponse.ok(assetService.upload(userId, projectId, file));
     }
 
+    @GetMapping("/{assetId}")
+    public BaseResponse<Asset> getAsset(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable Long assetId
+    ) {
+        Long userId = authService.me(authorization).getId();
+        return BaseResponse.ok(assetService.getAsset(userId, assetId));
+    }
+
     @PostMapping("/reverse-prompt")
     public BaseResponse<AssetDtos.ReversePromptData> reversePrompt(
             @RequestHeader("Authorization") String authorization,
