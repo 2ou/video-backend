@@ -1,0 +1,123 @@
+/* =========================================
+   「深空极光」暗黑高级感主题 (Dark Premium UI)
+   ========================================= */
+
+:root {
+    /* --- 核心色板 --- */
+    --bg-base: #0a0a0c;       /* 最底层画布背景 (极深灰) */
+    --bg-panel: #151518;      /* 左右两侧控制面板背景 */
+    --bg-element: #222226;    /* 输入框、按钮、卡片背景 */
+
+    --border-color: #2b2b30;  /* 统一的低饱和度边框 */
+    --border-hover: #45454d;  /* 悬浮时的边框 */
+
+    --text-main: #ededf0;     /* 主文本 (非纯白，防刺眼) */
+    --text-muted: #82828a;    /* 辅助说明文本 */
+
+    --accent-color: #3b82f6;  /* 核心交互色：科技蓝 */
+    --accent-hover: #60a5fa;  /* 悬浮高亮蓝 */
+    --accent-glow: rgba(59, 130, 246, 0.3); /* 发光阴影 */
+}
+
+/* 1. 全局重置与底色设定 */
+html, body, #app {
+    background-color: var(--bg-base) !important;
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 2. 布局面板基础 (覆盖视图中的写死样式) */
+.editor-layout {
+    background: var(--bg-base) !important;
+}
+.sidebar-left, .sidebar-right {
+    background: var(--bg-panel) !important;
+    border-color: var(--border-color) !important;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.4); /* 让侧边栏与画布产生 Z 轴的高低落差感 */
+    z-index: 10;
+}
+.panel-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    color: var(--text-main) !important;
+}
+
+/* 3. 左侧工具栏拖拽节点质感提升 */
+.drag-item {
+    background: var(--bg-element) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-main) !important;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+.drag-item:hover {
+    border-color: var(--accent-color) !important;
+    color: var(--accent-hover) !important;
+    box-shadow: 0 4px 12px var(--accent-glow) !important; /* 悬浮时的呼吸发光感 */
+    transform: translateY(-2px); /* 轻微上浮，增加物理按键感 */
+}
+
+/* 4. Vue Flow 画布深度定制 (融入暗黑环境) */
+.vue-flow__background {
+    background-color: var(--bg-base);
+}
+.vue-flow__background pattern circle {
+    fill: #222226 !important; /* 网格点调暗，避免喧宾夺主 */
+}
+.vue-flow__edge-path {
+    stroke: #444 !important; /* 默认连线颜色变暗 */
+    stroke-width: 2.5;
+}
+.vue-flow__edge.selected .vue-flow__edge-path,
+.vue-flow__edge:hover .vue-flow__edge-path {
+    stroke: var(--accent-color) !important; /* 选中或悬浮连线高亮科技蓝 */
+    filter: drop-shadow(0 0 4px var(--accent-glow)); /* 连线发光 */
+}
+
+/* 5. 覆盖 Element Plus 的亮色默认样式 */
+.el-input__wrapper, .el-textarea__inner, .el-select__wrapper {
+    background-color: var(--bg-element) !important;
+    box-shadow: 0 0 0 1px var(--border-color) inset !important;
+    color: var(--text-main) !important;
+    border-radius: 6px !important;
+}
+.el-input__wrapper.is-focus, .el-textarea__inner:focus, .el-select__wrapper.is-focused {
+    box-shadow: 0 0 0 1px var(--accent-color) inset !important;
+}
+
+/* 选择器下拉菜单暗黑化 */
+.el-select-dropdown {
+    background-color: var(--bg-panel) !important;
+    border: 1px solid var(--border-color) !important;
+}
+.el-select-dropdown__item {
+    color: var(--text-main) !important;
+}
+.el-select-dropdown__item.is-hovering, .el-select-dropdown__item:hover {
+    background-color: var(--bg-element) !important;
+}
+
+/* 按钮高级质感 */
+.el-button--primary {
+    background-color: var(--accent-color) !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    letter-spacing: 1px;
+    transition: all 0.3s ease;
+}
+.el-button--primary:hover {
+    background-color: var(--accent-hover) !important;
+    box-shadow: 0 0 16px var(--accent-glow) !important;
+}
+
+/* 6. 画布内文本节点暗黑化 */
+.text-node {
+    background: var(--bg-element) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-main) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important; /* 画布内节点更重的阴影 */
+}
+.text-node.is-selected {
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 0 0 2px var(--accent-glow) !important;
+}
